@@ -17,9 +17,9 @@ export default function Home() {
   const mountRef = useRef<HTMLDivElement>(null);
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
+  const [litPlace, setLitPlace] = useState<string | null>(null); // 新增状态：记录点亮的地点
 
   useEffect(() => {
-    // 1. 基础场景搭建
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.z = 3;
@@ -31,14 +31,12 @@ export default function Home() {
       mountRef.current.appendChild(renderer.domElement);
     }
 
-    // 2. 创建地球
     const geometry = new THREE.SphereGeometry(1, 64, 64);
     const texture = new THREE.TextureLoader().load("/earth.jpg");
     const material = new THREE.MeshBasicMaterial({ map: texture });
     const earth = new THREE.Mesh(geometry, material);
     scene.add(earth);
 
-    // 3. 鼠标拖拽旋转控制
     let isDragging = false;
     let previousMousePosition = { x: 0, y: 0 };
     renderer.domElement.addEventListener("mousedown", (e) => {
@@ -55,14 +53,12 @@ export default function Home() {
     renderer.domElement.addEventListener("mouseup", () => { isDragging = false; });
     renderer.domElement.addEventListener("mouseleave", () => { isDragging = false; });
 
-    // 4. 动画循环
     const animate = () => {
       requestAnimationFrame(animate);
       renderer.render(scene, camera);
     };
     animate();
 
-    // 5. 窗口自适应
     const handleResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
@@ -70,35 +66,14 @@ export default function Home() {
     };
     window.addEventListener("resize", handleResize);
 
-    // ==========================================
-    // 6. 定义全局函数 addMarker，绘制“发光光晕”
-    // ==========================================
     (window as any).addMarker = (lat: number, lon: number) => {
-      // 计算 3D 坐标（高度 1.02，稍微高于地球表面）
-      const phi = (90 - lat) * (Math.PI / 180);
-      const theta = (lon + 180) * (Math.PI / 180);
-      const x = -1.02 * Math.sin(phi) * Math.cos(theta);
-      const z = 1.02 * Math.sin(phi) * Math.sin(theta);
-      const y = 1.02 * Math.cos(phi);
-      const pos = new THREE.Vector3(x, y, z);
+      const pos = latLonToVector3(lat, lon, 1.1);
+      const dotGeometry = new THREE.SphereGeometry(0.06, 32, 32);
+      const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+      const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+      dot.position.copy(pos);
+      scene.add(dot);
 
-      // 创建圆形光晕（已调大，颜色改成荧光黄）
-      const glowGeometry = new THREE.CircleGeometry(0.3, 32);
-      const glowMaterial = new THREE.MeshBasicMaterial({
-        color: 0xffff00, // 亮黄色（最显眼）
-        transparent: true,
-        opacity: 0.9, // 几乎不透明
-        side: THREE.DoubleSide
-      });
-      const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-      glow.position.copy(pos);
-      
-      // 让光晕永远面向摄像机（朝向屏幕）
-      glow.lookAt(camera.position);
-      
-      scene.add(glow);
-
-      // 旋转地球对准中国
       earth.rotation.y = -((lon + 180) * Math.PI / 180) + Math.PI - (70 * Math.PI / 180);
       earth.rotation.x = (lat * Math.PI / 180);
 
@@ -113,21 +88,19 @@ export default function Home() {
     };
   }, []);
 
-  // 查询按钮点击事件
   const handleQuery = async () => {
     if (!address) return;
     setLoading(true);
-    console.log("开始请求，地点：", address);
+    setLitPlace(null); // 先清掉旧标签
 
     try {
       const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`);
       const data = await res.json();
-      console.log("响应状态:", res.status);
-      console.log("响应数据:", data);
 
       if (data.success && data.data) {
         const { latitude, longitude } = data.data;
         (window as any).addMarker(latitude, longitude);
+        setLitPlace(address); // 设置新标签内容
       }
     } catch (error) {
       console.error("请求出错:", error);
@@ -152,6 +125,30 @@ export default function Home() {
       >
         欢迎玩家进入地球Online游戏，您的领域持续加载中……
       </h1>
+
+      {/* 新增：屏幕中下方的发光标签 */}
+      {litPlace && (
+        <div 
+          className="absolute bottom-32 left-1/2 -translate-x-1/2 z-20 animate-in fade-in slide-in-from-bottom-4 duration-500"
+          style={{
+            background: 'rgba(30, 30, 30, 0.85)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '16px',
+            padding: '12px 24px',
+            color: '#ffffff',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            boxShadow: '0 0 20px rgba(0, 255, 255, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <span className="text-yellow-400">📍</span>
+          已点亮：{litPlace}
+        </div>
+      )}
 
       <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-10 flex gap-2">
         <input 
